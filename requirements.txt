@@ -1,7 +1,8 @@
 streamlit==1.30.0
-tensorflow==2.12.0
-numpy==1.23.5
-pandas==1.5.3
-matplotlib==3.7.1
-scikit-learn==1.2.2
-lime==0.2.0.1
+tensorflow==2.17.1
+numpy
+pandas
+matplotlib
+plotly
+scikit-learn
+lime
