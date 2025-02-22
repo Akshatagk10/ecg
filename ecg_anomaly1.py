@@ -2,7 +2,7 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 import warnings
 from tensorflow.keras import layers, losses, Model
 from sklearn.model_selection import train_test_split
@@ -14,16 +14,7 @@ warnings.filterwarnings('ignore')
 # Set Streamlit page configuration
 st.set_page_config(page_title="ECG Anomaly Detection", page_icon="💓", layout="wide")
 
-# Custom Styling
-st.markdown("""
-    <style>
-        .main { background-color: #f7f9fc; }
-        .sidebar .sidebar-content { background-color: #e8f0fe; }
-        h1 { color: #003366; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Load Data Function
+# Load data function
 @st.cache_data
 def load_data(file=None):
     try:
@@ -36,7 +27,7 @@ def load_data(file=None):
         st.error(f"Error loading data: {e}")
         return None
 
-# Define Autoencoder Model
+# Define and load model function
 @st.cache_resource
 def load_model():
     class Detector(Model):
@@ -52,7 +43,7 @@ def load_model():
                 layers.Dense(32, activation='relu'),
                 layers.Dense(140, activation='sigmoid')
             ])
-        
+
         def call(self, x):
             encoded = self.encoder(x)
             decoded = self.decoder(encoded)
@@ -62,14 +53,11 @@ def load_model():
     model.compile(optimizer='adam', loss='mae')
     return model
 
-# Sidebar - File Uploader
-st.sidebar.title("Upload ECG Data")
-uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
+# File uploader
+uploaded_file = st.sidebar.file_uploader("Upload your ECG data (CSV)", type=["csv"])
 
-# Load Data
-with st.spinner("Loading Data..."):
-    df = load_data(uploaded_file)
-
+# Load data
+df = load_data(uploaded_file)
 if df is not None:
     data = df.iloc[:, :-1].values
     labels = df.iloc[:, -1].values
@@ -77,16 +65,26 @@ if df is not None:
     min_val, max_val = np.min(train_data), np.max(train_data)
     train_data = (train_data - min_val) / (max_val - min_val)
     test_data = (test_data - min_val) / (max_val - min_val)
+    
+    # Ensure correct data type (float32)
     train_data, test_data = map(lambda x: tf.cast(x, dtype=tf.float32), [train_data, test_data])
     train_labels, test_labels = train_labels.astype(bool), test_labels.astype(bool)
+
+    # Separate normal and anomalous data
     n_train_data, n_test_data = train_data[train_labels], test_data[test_labels]
+    an_train_data, an_test_data = train_data[~train_labels], test_data[~test_labels]
 
-    # Load and Train Model
+    # Load and train the autoencoder model
     autoencoder = load_model()
-    with st.spinner("Training Model..."):
-        autoencoder.fit(n_train_data, n_train_data, epochs=20, batch_size=64, validation_data=(test_data, test_data))
 
-    # Define LIME Explainer
+    # Train model with explicit casting
+    autoencoder.fit(n_train_data, n_train_data, epochs=20, batch_size=64, validation_data=(n_test_data, n_test_data))
+
+else:
+    st.warning("No ECG data available. Please upload a dataset.")
+
+# Define LIME Explainer
+if df is not None:
     explainer = LimeTabularExplainer(
         training_data=n_train_data.numpy(),
         mode="regression",
@@ -94,12 +92,25 @@ if df is not None:
         discretize_continuous=True
     )
 
-    # Sidebar - User Controls
-    st.sidebar.title("ECG Analysis")
-    ecg_index = st.sidebar.slider("Select ECG Index", 0, len(n_test_data) - 1, 0)
-    use_lime = st.sidebar.checkbox("Show LIME Explanation", False)
+# Function to plot residual plot of ECG data
+def plot_residual(data, index):
+    fig, ax = plt.subplots()
+    enc_img = autoencoder.encoder(data)
+    dec_img = autoencoder.decoder(enc_img)
+    residuals = data[index] - dec_img[index]
+    ax.scatter(range(len(residuals)), residuals, c='red', label='Residuals')
+    ax.axhline(0, color='black', linestyle='--')
+    ax.set_xlabel("Feature Index")
+    ax.set_ylabel("Residual (Input - Reconstruction)")
+    ax.legend()
+    st.pyplot(fig)
 
-    # Model Predictions & Threshold
+# Sidebar inputs
+st.sidebar.title("ECG Anomaly Detection")
+ecg_index = st.sidebar.slider("Select ECG Index", 0, len(n_test_data) - 1, 0)
+
+# Make predictions and calculate threshold
+if df is not None:
     reconstructed = autoencoder(n_train_data)
     train_loss = losses.mae(reconstructed, n_train_data)
     threshold = np.mean(train_loss) + 2 * np.std(train_loss)
@@ -109,26 +120,4 @@ if df is not None:
         loss = losses.mae(rec, data)
         return tf.math.less(loss, threshold)
 
-    # Function to Plot ECG Data
-    def plot_ecg(data, index, show_lime=False):
-        enc_img = autoencoder.encoder(data)
-        dec_img = autoencoder.decoder(enc_img)
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(y=data[index], mode='lines', name='Input', line=dict(color='blue')))
-        fig.add_trace(go.Scatter(y=dec_img[index], mode='lines', name='Reconstruction', line=dict(color='red')))
-        fig.add_trace(go.Scatter(y=(data[index] - dec_img[index]), mode='lines', fill='tozeroy', name='Error', line=dict(color='lightcoral')))
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        if show_lime:
-            exp = explainer.explain_instance(data[index].numpy(), lambda x: autoencoder.predict(x))
-            lime_fig = exp.as_pyplot_figure()
-            st.pyplot(lime_fig)
-
-    # Display ECG Visualization
-    st.subheader("ECG Signal Analysis")
-    plot_ecg(n_test_data, ecg_index, use_lime)
-
-else:
-    st.warning("No ECG data available. Please upload a dataset.")
+    plot_residual(n_test_data, ecg_index)
