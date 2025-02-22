@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
+import re
 from tensorflow.keras import layers, losses, Model
 from sklearn.model_selection import train_test_split
 from lime.lime_tabular import LimeTabularExplainer
@@ -111,8 +112,12 @@ def plot_residual_with_lime(data, index):
     lime_weights = dict(exp.as_list())
     
     # Overlay LIME importance on residual plot
-    for i, weight in lime_weights.items():
-        ax.scatter(int(i.split()[-1]), residuals[int(i.split()[-1])], color='blue', s=abs(weight) * 100, alpha=0.6, label='LIME Importance' if i == 0 else "")
+    for feature, weight in lime_weights.items():
+        match = re.search(r'Feature (\d+)', feature)
+        if match:
+            feature_idx = int(match.group(1))
+            if 0 <= feature_idx < len(residuals):
+                ax.scatter(feature_idx, residuals[feature_idx], color='blue', s=abs(weight) * 100, alpha=0.6, label='LIME Importance' if feature_idx == 0 else "")
     
     ax.set_xlabel("Feature Index")
     ax.set_ylabel("Residual (Input - Reconstruction)")
