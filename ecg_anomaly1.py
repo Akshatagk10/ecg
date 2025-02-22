@@ -94,35 +94,75 @@ if df is not None:
     )
 
 # Function to plot residual plot with LIME importance overlay
+# def plot_residual_with_lime(data, index):
+#     fig, ax = plt.subplots()
+#     enc_img = autoencoder.encoder(data)
+#     dec_img = autoencoder.decoder(enc_img)
+#     residuals = data[index] - dec_img[index]
+#     ax.scatter(range(len(residuals)), residuals, c='red', label='Residuals')
+#     ax.axhline(0, color='black', linestyle='--')
+    
+    # Generate LIME explanation
+    # data_instance = data[index].numpy().reshape(1, -1)
+    # def model_predict(input_data):
+    #     input_data = tf.convert_to_tensor(input_data, dtype=tf.float32)
+    #     return autoencoder.predict(input_data).reshape(-1, 140)
+    
+    # exp = explainer.explain_instance(data_instance.flatten(), model_predict)
+    # lime_weights = dict(exp.as_list())
+    
+    # # Overlay LIME importance on residual plot
+    # for feature, weight in lime_weights.items():
+    #     match = re.search(r'Feature (\d+)', feature)
+    #     if match:
+    #         feature_idx = int(match.group(1))
+    #         if 0 <= feature_idx < len(residuals):
+    #             ax.scatter(feature_idx, residuals[feature_idx], color='blue', s=abs(weight) * 100, alpha=0.6, label='LIME Importance' if feature_idx == 0 else "")
+    
+    # ax.set_xlabel("Feature Index")
+    # ax.set_ylabel("Residual (Input - Reconstruction)")
+    # ax.legend()
+    # st.pyplot(fig)
+
+# Function to plot residual plot with LIME importance overlay
 def plot_residual_with_lime(data, index):
     fig, ax = plt.subplots()
     enc_img = autoencoder.encoder(data)
     dec_img = autoencoder.decoder(enc_img)
-    residuals = data[index] - dec_img[index]
+    residuals = (data[index] - dec_img[index]).numpy()  # Ensure NumPy array
+
     ax.scatter(range(len(residuals)), residuals, c='red', label='Residuals')
     ax.axhline(0, color='black', linestyle='--')
-    
+
     # Generate LIME explanation
     data_instance = data[index].numpy().reshape(1, -1)
+
     def model_predict(input_data):
         input_data = tf.convert_to_tensor(input_data, dtype=tf.float32)
         return autoencoder.predict(input_data).reshape(-1, 140)
-    
+
     exp = explainer.explain_instance(data_instance.flatten(), model_predict)
     lime_weights = dict(exp.as_list())
-    
+
     # Overlay LIME importance on residual plot
+    first_lime_point = True  # Ensure only one legend entry
     for feature, weight in lime_weights.items():
         match = re.search(r'Feature (\d+)', feature)
         if match:
             feature_idx = int(match.group(1))
             if 0 <= feature_idx < len(residuals):
-                ax.scatter(feature_idx, residuals[feature_idx], color='blue', s=abs(weight) * 100, alpha=0.6, label='LIME Importance' if feature_idx == 0 else "")
-    
+                ax.scatter(
+                    feature_idx, residuals[feature_idx], 
+                    color='blue', s=abs(weight) * 100, alpha=0.6, 
+                    label='LIME Importance' if first_lime_point else ""
+                )
+                first_lime_point = False  # Only first point gets label
+
     ax.set_xlabel("Feature Index")
     ax.set_ylabel("Residual (Input - Reconstruction)")
     ax.legend()
     st.pyplot(fig)
+
 
 # Sidebar inputs
 st.sidebar.title("ECG Anomaly Detection")
