@@ -92,30 +92,32 @@ if df is not None:
         discretize_continuous=True
     )
 
-# Function to plot residual plot of ECG data
-def plot_residual(data, index):
+# Function to plot residual plot with LIME importance overlay
+def plot_residual_with_lime(data, index):
     fig, ax = plt.subplots()
     enc_img = autoencoder.encoder(data)
     dec_img = autoencoder.decoder(enc_img)
     residuals = data[index] - dec_img[index]
     ax.scatter(range(len(residuals)), residuals, c='red', label='Residuals')
     ax.axhline(0, color='black', linestyle='--')
+    
+    # Generate LIME explanation
+    data_instance = data[index].numpy().reshape(1, -1)
+    def model_predict(input_data):
+        input_data = tf.convert_to_tensor(input_data, dtype=tf.float32)
+        return autoencoder.predict(input_data).reshape(-1, 140)
+    
+    exp = explainer.explain_instance(data_instance.flatten(), model_predict)
+    lime_weights = dict(exp.as_list())
+    
+    # Overlay LIME importance on residual plot
+    for i, weight in lime_weights.items():
+        ax.scatter(int(i.split()[-1]), residuals[int(i.split()[-1])], color='blue', s=abs(weight) * 100, alpha=0.6, label='LIME Importance' if i == 0 else "")
+    
     ax.set_xlabel("Feature Index")
     ax.set_ylabel("Residual (Input - Reconstruction)")
     ax.legend()
     st.pyplot(fig)
-
-# Function to generate LIME explanation
-def plot_lime_explanation(data, index):
-    data_instance = data[index].numpy().reshape(1, -1)  # Ensure 2D input
-    
-    def model_predict(input_data):
-        input_data = tf.convert_to_tensor(input_data, dtype=tf.float32)
-        return autoencoder.predict(input_data).reshape(-1, 140)  # Ensure correct shape for LIME
-    
-    exp = explainer.explain_instance(data_instance.flatten(), model_predict)
-    lime_fig = exp.as_pyplot_figure()
-    st.pyplot(lime_fig)
 
 # Sidebar inputs
 st.sidebar.title("ECG Anomaly Detection")
@@ -133,7 +135,4 @@ if df is not None:
         loss = losses.mae(rec, data)
         return tf.math.less(loss, threshold)
 
-    plot_residual(n_test_data, ecg_index)
-    
-    if use_lime:
-        plot_lime_explanation(n_test_data, ecg_index)
+    plot_residual_with_lime(n_test_data, ecg_index)
