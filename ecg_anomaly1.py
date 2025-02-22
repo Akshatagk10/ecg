@@ -105,9 +105,22 @@ def plot_residual(data, index):
     ax.legend()
     st.pyplot(fig)
 
+# Function to generate LIME explanation
+def plot_lime_explanation(data, index):
+    data_instance = data[index].numpy().reshape(1, -1)  # Ensure 2D input
+    
+    def model_predict(input_data):
+        input_data = tf.convert_to_tensor(input_data, dtype=tf.float32)
+        return autoencoder.predict(input_data).reshape(-1, 140)  # Ensure correct shape for LIME
+    
+    exp = explainer.explain_instance(data_instance.flatten(), model_predict)
+    lime_fig = exp.as_pyplot_figure()
+    st.pyplot(lime_fig)
+
 # Sidebar inputs
 st.sidebar.title("ECG Anomaly Detection")
 ecg_index = st.sidebar.slider("Select ECG Index", 0, len(n_test_data) - 1, 0)
+use_lime = st.sidebar.button("Show LIME Explanation")
 
 # Make predictions and calculate threshold
 if df is not None:
@@ -121,3 +134,6 @@ if df is not None:
         return tf.math.less(loss, threshold)
 
     plot_residual(n_test_data, ecg_index)
+    
+    if use_lime:
+        plot_lime_explanation(n_test_data, ecg_index)
